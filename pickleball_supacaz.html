@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pickleball × SUPACAZ</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#111;display:flex;justify-content:center;align-items:flex-start;min-height:100vh;padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+#app{width:100%;max-width:600px}
+#scoreboard{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px;padding:10px 16px;background:#1e1e2e;border:1px solid rgba(255,255,255,0.1);border-radius:12px 12px 0 0}
+.side-label{font-size:11px;color:#888;font-weight:500;letter-spacing:.04em}
+.pts{font-size:28px;font-weight:500;color:#fff;line-height:1}
+.games-row{display:flex;gap:3px;margin-top:3px}
+.gdot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,0.2)}
+.gdot.won{background:#639922}
+#center-info{text-align:center}
+#smsg{font-size:12px;font-weight:500;color:#fff;min-height:16px}
+#sbadge{font-size:10px;color:#aaa;margin-top:3px;min-height:14px}
+.svtag{font-size:10px;background:#FAC775;color:#412402;padding:1px 7px;border-radius:4px;display:inline-block}
+.smashtag{font-size:10px;background:#EF4444;color:#fff;padding:1px 7px;border-radius:4px;display:inline-block;animation:blink .4s infinite alternate}
+@keyframes blink{from{opacity:1}to{opacity:.3}}
+#cw{position:relative;width:100%}
+canvas{display:block;width:100%;cursor:crosshair}
+#cbar{display:flex;align-items:center;gap:8px;padding:8px 14px;background:#1e1e2e;border:1px solid rgba(255,255,255,0.1);border-radius:0 0 12px 12px;border-top:none;flex-wrap:wrap}
+button{font-size:12px;padding:5px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.08);color:#fff;cursor:pointer}
+button:hover{background:rgba(255,255,255,0.15)}
+select{font-size:12px;padding:5px 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.08);color:#fff;cursor:pointer}
+select option{background:#222}
+#tip{font-size:11px;color:#666;margin-left:auto}
+#logw{margin-top:8px;padding:8px 14px;background:#1a1a2a;border-radius:8px;border:1px solid rgba(255,255,255,0.08)}
+#logtitle{font-size:11px;font-weight:500;color:#666;margin-bottom:4px}
+#logul{list-style:none;max-height:64px;overflow-y:auto}
+#logul li{font-size:11px;color:#888;padding:1px 0;border-bottom:1px solid rgba(255,255,255,0.05)}
+#logul::-webkit-scrollbar{width:4px}
+#logul::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:2px}
+</style>
+</head>
+<body>
+<div id="app">
+<div id="scoreboard">
+  <div class="side">
+    <div class="side-label">電腦 AI</div>
+    <div class="pts" id="ai-pts">0</div>
+    <div class="games-row" id="ai-games"></div>
+  </div>
+  <div id="center-info">
+    <div id="smsg">按空白鍵開始</div>
+    <div id="sbadge"></div>
+  </div>
+  <div class="side" style="text-align:right;align-items:flex-end;display:flex;flex-direction:column">
+    <div class="side-label">你</div>
+    <div class="pts" id="p-pts">0</div>
+    <div class="games-row" id="p-games"></div>
+  </div>
+</div>
+<div id="cw"><canvas id="gc"></canvas></div>
+<div id="cbar">
+  <button id="btnstart">開始 / 重來</button>
+  <select id="diffsel">
+    <option value="easy">簡單</option>
+    <option value="med" selected>普通</option>
+    <option value="hard">困難</option>
+  </select>
+  <span id="tip">WASD移動 · 擊球後點擊 SMASH</span>
+</div>
+<div id="logw">
+  <div id="logtitle">得分紀錄</div>
+  <ul id="logul"></ul>
+</div>
+</div>
+
+<script>
+const cv=document.getElementById('gc');
+const ct=cv.getContext('2d');
+const cwrap=document.getElementById('cw');
+
+const ASPECT=44/20;
+function resize(){
+  cv.width=cwrap.clientWidth||480;
+  cv.height=Math.round(cv.width/ASPECT);
+}
+resize();
+window.addEventListener('resize',()=>{resize();if(!running)draw();});
+
+const W=()=>cv.width,H=()=>cv.height;
+
+function dm(){
+  const w=W(),h=H();
+  const mx=w*0.06,my=h*0.03;
+  const cw=w-mx*2,ch=h-my*2;
+  const netY=my+ch/2;
+  const kitH=ch*(7/44);
+  return{mx,my,cw,ch,netY,kitH,
+    kitAiBot:my+kitH,
+    kitPTop:h-my-kitH,
+    w,h};
+}
+
+const PW=()=>Math.round(W()*0.14);
+const PH=()=>Math.round(H()*0.024);
+const BR=()=>Math.max(5,Math.round(W()*0.016));
+
+let running=false,animId=null;
+let pScore=0,aiScore=0,pGames=0,aiGames=0;
+let state='idle',serving='player';
+let ball={},player={},ai={};
+const keys={};
+let mousePos={x:0,y:0};
+let smashWindow=0;
+let smashFlash=[];
+let supacazAnim=0,supacazActive=false;
+let lastPScore=0,particles=[];
+
+document.addEventListener('keydown',e=>{
+  keys[e.code]=true;
+  if(e.code==='Space'){e.preventDefault();onSpace();}
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
+});
+document.addEventListener('keyup',e=>{keys[e.code]=false;});
+
+function onSpace(){
+  if(state==='serve'&&serving==='player')doServe();
+  else if(state==='idle'||state==='between')startGame();
+}
+function doServe(){state='rally';setBadge('');}
+
+function diffCfg(){
+  const v=document.getElementById('diffsel').value;
+  if(v==='easy')return{aiSpd:0.030,aiErr:0.20,baseSpd:0.0075,drag:0.014};
+  if(v==='hard')return{aiSpd:0.070,aiErr:0.03,baseSpd:0.012,drag:0.010};
+  return{aiSpd:0.050,aiErr:0.10,baseSpd:0.010,drag:0.012};
+}
+
+function initGame(){
+  const d=dm();
+  pScore=0;aiScore=0;lastPScore=0;supacazActive=false;
+  serving=Math.random()<0.5?'player':'ai';
+  player={
+    x:d.mx+d.cw/2,
+    y:d.kitPTop+(d.h-d.my-d.kitPTop)*0.45,
+    w:PW(),h:PH(),
+    minY:d.kitPTop,
+    maxY:d.h-d.my-PH()
+  };
+  ai={
+    x:d.mx+d.cw/2,
+    y:d.my+d.kitH*0.5,
+    w:PW(),h:PH(),
+    minY:d.my,
+    maxY:d.kitAiBot-PH()
+  };
+  particles=[];
+  resetBall();
+  state='serve';
+  updateUI();
+}
+
+function resetBall(){
+  const cfg=diffCfg();
+  const spd=cfg.baseSpd*W();
+  const ang=(28+Math.random()*28)*Math.PI/180;
+  const sx=Math.random()<0.5?1:-1;
+  ball={r:BR(),trail:[],lastHit:serving==='player'?'player':'ai',
+    dbBounced:0,dbDone:false,hitCooldown:0};
+  if(serving==='player'){
+    ball.x=player.x;ball.y=player.y-ball.r*3;
+    ball.vx=spd*Math.cos(ang)*sx;ball.vy=-spd*Math.sin(ang)*1.2;
+  }else{
+    ball.x=ai.x;ball.y=ai.y+ball.r*3;
+    ball.vx=spd*Math.cos(ang)*sx;ball.vy=spd*Math.sin(ang)*1.2;
+  }
+  smashWindow=0;
+}
+
+function setMsg(t){document.getElementById('smsg').textContent=t;}
+function setBadge(t){document.getElementById('sbadge').innerHTML=t;}
+
+function updateUI(){
+  document.getElementById('p-pts').textContent=pScore;
+  document.getElementById('ai-pts').textContent=aiScore;
+  ['p','ai'].forEach(who=>{
+    const el=document.getElementById(who+'-games');
+    el.innerHTML='';
+    const n=who==='p'?pGames:aiGames;
+    for(let i=0;i<n;i++){const d2=document.createElement('div');d2.className='gdot won';el.appendChild(d2);}
+  });
+  setBadge(`<span class="svtag">${serving==='player'?'你發球':'AI發球'}</span>`);
+}
+
+function logPt(who,reason){
+  const li=document.createElement('li');
+  li.textContent=`${who==='player'?'[你]':'[AI]'} +1 — ${reason}`;
+  const ul=document.getElementById('logul');
+  ul.insertBefore(li,ul.firstChild);
+  if(ul.children.length>30)ul.removeChild(ul.lastChild);
+}
+
+function awardPt(winner,reason){
+  if(winner===serving){
+    if(winner==='player'){
+      pScore++;
+      if(pScore>lastPScore&&pScore%5===0&&pScore>0){
+        supacazActive=true;supacazAnim=0;spawnConfetti();
+      }
+      lastPScore=pScore;
+    }else aiScore++;
+    logPt(winner,reason);
+  }else{
+    serving=winner;
+    logPt(winner,'換發球 — '+reason);
+  }
+  updateUI();
+  const WIN=11;
+  if(pScore>=WIN&&pScore-aiScore>=2){
+    pGames++;pScore=0;aiScore=0;state='between';
+    setMsg('你贏得這局！');updateUI();
+    setTimeout(()=>{initGame();},2000);return;
+  }
+  if(aiScore>=WIN&&aiScore-pScore>=2){
+    aiGames++;pScore=0;aiScore=0;state='between';
+    setMsg('AI贏得這局');updateUI();
+    setTimeout(()=>{initGame();},2000);return;
+  }
+  state='pause';smashWindow=0;
+  setTimeout(()=>{resetBall();state='serve';updateUI();},700);
+}
+
+function spawnConfetti(){
+  particles=[];
+  const cols=['#FF6B35','#F7931E','#FFCD00','#39B54A','#00AEEF','#8B5CF6','#EF4444','#fff'];
+  for(let i=0;i<60;i++){
+    particles.push({
+      x:W()/2,y:H()/2,
+      vx:(Math.random()-0.5)*8,vy:(Math.random()-2)*6,
+      color:cols[Math.floor(Math.random()*cols.length)],
+      size:4+Math.random()*5,life:1,decay:0.018+Math.random()*0.01,
+      rot:Math.random()*Math.PI*2,rotV:(Math.random()-0.5)*0.2
+    });
+  }
+}
+
+cv.addEventListener('mousemove',e=>{
+  const r=cv.getBoundingClientRect();
+  mousePos.x=(e.clientX-r.left)*(W()/r.width);
+  mousePos.y=(e.clientY-r.top)*(H()/r.height);
+});
+cv.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  const r=cv.getBoundingClientRect();
+  mousePos.x=(e.touches[0].clientX-r.left)*(W()/r.width);
+  mousePos.y=(e.touches[0].clientY-r.top)*(H()/r.height);
+},{passive:false});
+
+cv.addEventListener('click',e=>{
+  const r=cv.getBoundingClientRect();
+  const cx=(e.clientX-r.left)*(W()/r.width);
+  const cy=(e.clientY-r.top)*(H()/r.height);
+  if(state==='serve'&&serving==='player'){doServe();return;}
+  if(state==='idle'){startGame();return;}
+  if(smashWindow>0&&state==='rally')doSmash(cx,cy);
+});
+cv.addEventListener('touchstart',e=>{
+  if(state==='serve'&&serving==='player'){doServe();return;}
+  if(smashWindow>0&&state==='rally'){
+    const r=cv.getBoundingClientRect();
+    const cx=(e.touches[0].clientX-r.left)*(W()/r.width);
+    const cy=(e.touches[0].clientY-r.top)*(H()/r.height);
+    doSmash(cx,cy);
+  }
+},{passive:true});
+
+function doSmash(cx,cy){
+  const dx=cx-ball.x,dy=cy-ball.y;
+  const dist=Math.sqrt(dx*dx+dy*dy)||1;
+  const power=diffCfg().baseSpd*W()*2.8;
+  ball.vx=(dx/dist)*power;
+  ball.vy=(dy/dist)*power*0.85;
+  if(ball.vy>0)ball.vy=-Math.abs(ball.vy);
+  smashWindow=0;
+  spawnSmashFlash(ball.x,ball.y);
+  setBadge('<span class="smashtag">SMASH!</span>');
+  setTimeout(()=>{if(document.getElementById('sbadge').innerHTML.includes('SMASH'))setBadge('');},600);
+}
+
+function spawnSmashFlash(x,y){
+  smashFlash=[];
+  for(let i=0;i<12;i++){
+    const a=i*(Math.PI*2/12);
+    smashFlash.push({x,y,a,len:BR()*4,life:1});
+  }
+}
+
+document.getElementById('btnstart').addEventListener('click',startGame);
+
+function startGame(){
+  if(animId)cancelAnimationFrame(animId);
+  running=true;initGame();loop();
+}
+function loop(){if(!running)return;update();draw();animId=requestAnimationFrame(loop);}
+
+function update(){
+  const d=dm();
+  const cfg=diffCfg();
+  const pspd=W()*0.006;
+
+  if(smashWindow>0)smashWindow--;
+  if(supacazActive){supacazAnim++;if(supacazAnim>180)supacazActive=false;}
+
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    p.x+=p.vx;p.y+=p.vy;p.vy+=0.15;p.rot+=p.rotV;p.life-=p.decay;
+    if(p.life<=0)particles.splice(i,1);
+  }
+
+  if(state==='serve'){
+    if(serving==='player'){
+      ball.x=player.x;ball.y=player.y-ball.r*3;
+      setMsg('空白鍵 / 點擊 發球');
+    }else{
+      ball.x=ai.x;ball.y=ai.y+ball.r*3;
+      setMsg('AI 發球中...');
+      setTimeout(()=>{if(state==='serve'&&serving==='ai')doServe();},900);
+    }
+    movePlayer(d,pspd);return;
+  }
+  if(state!=='rally')return;
+
+  movePlayer(d,pspd);
+
+  const aiHw=ai.w/2;
+  const aiTgtX=ball.x+(Math.random()-0.5)*W()*cfg.aiErr;
+  ai.x+=(Math.max(d.mx+aiHw,Math.min(d.mx+d.cw-aiHw,aiTgtX))-ai.x)*cfg.aiSpd*1.5;
+  const aiTgtY=ball.vy<0?ball.y-ai.h*2:d.my+d.kitH*0.4;
+  ai.y+=(Math.max(ai.minY,Math.min(ai.maxY,aiTgtY))-ai.y)*cfg.aiSpd;
+
+  ball.vx*=(1-cfg.drag);ball.vy*=(1-cfg.drag);
+  ball.trail=ball.trail||[];
+  ball.trail.push({x:ball.x,y:ball.y});
+  if(ball.trail.length>7)ball.trail.shift();
+  ball.x+=ball.vx;ball.y+=ball.vy;
+  if(ball.hitCooldown>0)ball.hitCooldown--;
+
+  if(ball.x-ball.r<d.mx){ball.x=d.mx+ball.r;ball.vx=Math.abs(ball.vx)*0.9;}
+  if(ball.x+ball.r>d.mx+d.cw){ball.x=d.mx+d.cw-ball.r;ball.vx=-Math.abs(ball.vx)*0.9;}
+
+  checkNet(d);if(state!=='rally')return;
+  checkHit(d,player,true);if(state!=='rally')return;
+  checkHit(d,ai,false);if(state!=='rally')return;
+  checkFloor(d);
+}
+
+function checkNet(d){
+  if(ball.vy>0&&ball.lastHit==='player'&&ball.y+ball.r>=d.netY&&ball.y-ball.r<d.netY+6)
+    awardPt('ai','球打到網');
+  if(ball.vy<0&&ball.lastHit==='ai'&&ball.y-ball.r<=d.netY&&ball.y+ball.r>d.netY-6)
+    awardPt('player','球打到網');
+}
+
+function checkHit(d,paddle,isPlayer){
+  if(ball.hitCooldown>0)return;
+  const ph=paddle.h,pw2=paddle.w/2;
+  const inX=ball.x>paddle.x-pw2&&ball.x<paddle.x+pw2;
+  let hit=false;
+  if(isPlayer&&ball.vy>0&&ball.y+ball.r>=paddle.y&&ball.y+ball.r<=paddle.y+ph+6&&inX)hit=true;
+  if(!isPlayer&&ball.vy<0&&ball.y-ball.r<=paddle.y+ph&&ball.y-ball.r>=paddle.y-6&&inX)hit=true;
+  if(!hit)return;
+
+  const off=(ball.x-paddle.x)/pw2;
+  const spd=Math.sqrt(ball.vx*ball.vx+ball.vy*ball.vy);
+  const minSpd=diffCfg().baseSpd*W()*0.75;
+  const es=Math.max(spd,minSpd)*(1.05+Math.random()*0.1);
+  const ang=(off*42+(Math.random()-0.5)*6)*Math.PI/180;
+
+  if(isPlayer){
+    ball.vy=-Math.abs(es*Math.cos(Math.abs(ang)*0.6));
+    ball.vx=es*Math.sin(ang);
+    ball.y=paddle.y-ball.r-1;
+    ball.lastHit='player';
+    smashWindow=22;
+    setBadge('<span style="font-size:10px;color:#FFCD00;font-weight:500">擊球後點擊可 SMASH</span>');
+  }else{
+    ball.vy=Math.abs(es*Math.cos(Math.abs(ang)*0.6));
+    ball.vx=es*Math.sin(ang);
+    ball.y=paddle.y+ph+ball.r+1;
+    ball.lastHit='ai';smashWindow=0;
+  }
+  ball.hitCooldown=6;
+}
+
+function checkFloor(d){
+  if(ball.vy>0&&ball.y+ball.r>=d.h-d.my){
+    ball.y=d.h-d.my-ball.r;
+    const rb=Math.abs(ball.vy)*0.5;
+    if(rb<1.8){awardPt('ai','你方落地失分');return;}
+    ball.vy=-rb;ball.vx*=0.85;
+    if(ball.lastHit==='ai'){ball.dbBounced++;if(ball.dbBounced>=2)ball.dbDone=true;}
+  }
+  if(ball.vy<0&&ball.y-ball.r<=d.my){
+    ball.y=d.my+ball.r;
+    const rb=Math.abs(ball.vy)*0.5;
+    if(rb<1.8){awardPt('player','AI方落地失分');return;}
+    ball.vy=rb;ball.vx*=0.85;
+    if(ball.lastHit==='player'){ball.dbBounced++;if(ball.dbBounced>=2)ball.dbDone=true;}
+  }
+  if(ball.y-ball.r>H()+30){awardPt('ai','你出界');return;}
+  if(ball.y+ball.r<-30){awardPt('player','AI出界');return;}
+}
+
+function movePlayer(d,spd){
+  const hw=player.w/2;
+  if((keys['ArrowLeft']||keys['KeyA'])&&player.x-hw>d.mx)player.x-=spd;
+  if((keys['ArrowRight']||keys['KeyD'])&&player.x+hw<d.mx+d.cw)player.x+=spd;
+  if((keys['ArrowUp']||keys['KeyW'])&&player.y>player.minY){
+    player.y-=spd*0.75;if(player.y<player.minY)player.y=player.minY;
+  }
+  if((keys['ArrowDown']||keys['KeyS'])&&player.y+player.h<player.maxY){
+    player.y+=spd*0.75;if(player.y+player.h>player.maxY)player.y=player.maxY-player.h;
+  }
+  if(mousePos.x){
+    const tx=Math.max(d.mx+hw,Math.min(d.mx+d.cw-hw,mousePos.x));
+    player.x+=(tx-player.x)*0.22;
+  }
+}
+
+function draw(){
+  const d=dm();
+  ct.clearRect(0,0,W(),H());
+
+  ct.fillStyle='#1a1a2e';ct.fillRect(0,0,W(),H());
+  ct.fillStyle='#2563c0';ct.fillRect(d.mx,d.my,d.cw,d.ch);
+  ct.fillStyle='#c0312b';ct.fillRect(d.mx,d.netY-d.kitH,d.cw,d.kitH*2);
+
+  ct.strokeStyle='rgba(255,255,255,0.85)';ct.lineWidth=1.5;
+  ct.strokeRect(d.mx,d.my,d.cw,d.ch);
+  ct.beginPath();
+  ct.moveTo(d.mx+d.cw/2,d.my);ct.lineTo(d.mx+d.cw/2,d.netY-d.kitH);
+  ct.moveTo(d.mx+d.cw/2,d.netY+d.kitH);ct.lineTo(d.mx+d.cw/2,d.my+d.ch);
+  ct.stroke();
+  ct.strokeStyle='rgba(255,255,255,0.7)';ct.lineWidth=1.5;
+  ct.beginPath();
+  ct.moveTo(d.mx,d.netY-d.kitH);ct.lineTo(d.mx+d.cw,d.netY-d.kitH);
+  ct.moveTo(d.mx,d.netY+d.kitH);ct.lineTo(d.mx+d.cw,d.netY+d.kitH);
+  ct.stroke();
+
+  ct.save();
+  ct.strokeStyle='rgba(255,255,255,0.95)';ct.lineWidth=4;
+  ct.beginPath();ct.moveTo(d.mx-5,d.netY);ct.lineTo(d.mx+d.cw+5,d.netY);ct.stroke();
+  ct.lineWidth=1.5;ct.strokeStyle='rgba(200,200,200,0.55)';
+  for(let i=0;i<=16;i++){const nx=d.mx+d.cw*i/16;ct.beginPath();ct.moveTo(nx,d.netY-6);ct.lineTo(nx,d.netY+6);ct.stroke();}
+  ct.restore();
+
+  ct.font=`bold ${Math.round(H()*0.024)}px sans-serif`;ct.textAlign='center';
+  ct.fillStyle='rgba(255,255,255,0.88)';
+  ct.save();ct.translate(d.mx+d.cw/2,d.netY-d.kitH/2);ct.rotate(Math.PI);ct.fillText('Kitchen',0,6);ct.restore();
+  ct.fillText('Kitchen',d.mx+d.cw/2,d.netY+d.kitH/2+6);
+
+  if(smashWindow>0){
+    const a=smashWindow/22;
+    ct.save();
+    ct.strokeStyle=`rgba(255,200,0,${a*0.4})`;ct.lineWidth=2;ct.setLineDash([4,3]);
+    const tx2=Math.max(d.mx+player.w/2,Math.min(d.mx+d.cw-player.w/2,mousePos.x||player.x));
+    const ty2=Math.max(d.my,Math.min(d.netY-4,mousePos.y||player.y));
+    ct.beginPath();ct.moveTo(player.x,player.y);ct.lineTo(tx2,ty2);ct.stroke();
+    ct.setLineDash([]);ct.restore();
+  }
+
+  for(const f of smashFlash){
+    f.life-=0.12;if(f.life<=0)continue;
+    ct.save();ct.strokeStyle=`rgba(255,220,0,${f.life})`;ct.lineWidth=2;
+    ct.beginPath();ct.moveTo(f.x,f.y);ct.lineTo(f.x+Math.cos(f.a)*f.len*f.life,f.y+Math.sin(f.a)*f.len*f.life);ct.stroke();ct.restore();
+  }
+
+  drawPaddle(player,true);
+  drawPaddle(ai,false);
+
+  if(ball&&ball.r){
+    for(let i=1;i<(ball.trail||[]).length;i++){
+      ct.beginPath();ct.arc(ball.trail[i].x,ball.trail[i].y,ball.r*(i/ball.trail.length)*0.55,0,Math.PI*2);
+      ct.fillStyle=`rgba(212,255,0,${(i/ball.trail.length)*0.3})`;ct.fill();
+    }
+    drawBall(ball.x,ball.y,ball.r);
+  }
+
+  for(const p of particles){
+    ct.save();ct.globalAlpha=p.life;ct.translate(p.x,p.y);ct.rotate(p.rot);
+    ct.fillStyle=p.color;ct.fillRect(-p.size/2,-p.size/4,p.size,p.size/2);ct.restore();
+  }
+
+  if(supacazActive)drawSupacazLogo(d);
+}
+
+function drawSupacazLogo(d){
+  const t=supacazAnim;
+  const fi=Math.min(1,t/20),fo=t>160?Math.max(0,1-(t-160)/20):1;
+  const alpha=fi*fo*(Math.sin(t*0.35)>0?1:0.3);
+  if(alpha<=0)return;
+  ct.save();ct.globalAlpha=alpha;
+  const cx=d.mx+d.cw/2,cy=H()/2;
+  const lw=d.cw*0.72,lh=lw*0.28;
+  ct.fillStyle='rgba(0,0,0,0.6)';
+  ct.beginPath();ct.roundRect(cx-lw/2-12,cy-lh/2-12,lw+24,lh+24,14);ct.fill();
+  const cols=['#FF6B35','#F7931E','#FFCD00','#39B54A','#00AEEF','#8B5CF6','#EF4444'];
+  const sw=lw/cols.length;
+  ct.save();ct.beginPath();ct.roundRect(cx-lw/2,cy-lh/2,lw,lh,8);ct.clip();
+  for(let i=0;i<cols.length;i++){ct.fillStyle=cols[i];ct.fillRect(cx-lw/2+sw*i,cy-lh/2,sw,lh);}
+  ct.restore();
+  const fs=Math.round(lh*0.65);
+  ct.font=`900 ${fs}px sans-serif`;ct.textAlign='center';ct.textBaseline='middle';
+  ct.fillStyle='rgba(0,0,0,0.6)';ct.fillText('SUPACAZ',cx+2,cy+2);
+  ct.fillStyle='#fff';ct.fillText('SUPACAZ',cx,cy);
+  const sr=lh*0.18;
+  drawStar(cx-lw/2-sr*1.8,cy,sr,'#FFCD00');
+  drawStar(cx+lw/2+sr*1.8,cy,sr,'#FFCD00');
+  ct.restore();
+}
+
+function drawStar(x,y,r,color){
+  ct.save();ct.fillStyle=color;ct.beginPath();
+  for(let i=0;i<10;i++){
+    const a=(i*Math.PI/5)-Math.PI/2;
+    const rr=i%2===0?r:r*0.44;
+    i===0?ct.moveTo(x+Math.cos(a)*rr,y+Math.sin(a)*rr):ct.lineTo(x+Math.cos(a)*rr,y+Math.sin(a)*rr);
+  }
+  ct.closePath();ct.fill();ct.restore();
+}
+
+function drawPaddle(p,isP){
+  ct.save();
+  const rx=6,pw=p.w,ph=p.h,x=p.x,y=p.y;
+  ct.fillStyle=isP?'#5D4037':'#37474F';
+  ct.fillRect(x-pw*0.1,isP?y+ph:y-ph*0.9,pw*0.2,ph*0.9);
+  ct.beginPath();ct.roundRect(x-pw/2,y,pw,ph,rx);
+  ct.fillStyle=isP?'#1565C0':'#B71C1C';ct.fill();
+  ct.save();ct.beginPath();ct.roundRect(x-pw/2,y,pw,ph,rx);ct.clip();
+  const cols=['#FF6B35','#F7931E','#FFCD00','#39B54A','#00AEEF','#8B5CF6','#EF4444'];
+  ct.globalAlpha=0.65;
+  const sw=pw/cols.length;
+  const c2=isP?cols:[...cols].reverse();
+  for(let i=0;i<c2.length;i++){ct.fillStyle=c2[i];ct.fillRect(x-pw/2+sw*i,y,sw,ph);}
+  ct.globalAlpha=1;
+  if(!isP){
+    const cr=Math.min(pw,ph)*0.35,ir=cr*0.44;
+    ct.fillStyle='rgba(255,255,255,0.6)';ct.beginPath();
+    for(let i=0;i<10;i++){
+      const a=(i*Math.PI/5)-Math.PI/2;
+      const rr=i%2===0?cr:ir;
+      i===0?ct.moveTo(x+Math.cos(a)*rr,y+ph/2+Math.sin(a)*rr):ct.lineTo(x+Math.cos(a)*rr,y+ph/2+Math.sin(a)*rr);
+    }
+    ct.closePath();ct.fill();
+  }
+  ct.restore();
+  ct.strokeStyle=isP?'rgba(144,202,249,0.9)':'rgba(239,154,154,0.9)';
+  ct.lineWidth=1.5;ct.beginPath();ct.roundRect(x-pw/2,y,pw,ph,rx);ct.stroke();
+  ct.font=`bold ${Math.round(ph*0.75)}px sans-serif`;
+  ct.textAlign='center';ct.textBaseline='middle';
+  ct.fillStyle='rgba(255,255,255,0.92)';ct.fillText('S',x,y+ph/2);
+  ct.restore();
+}
+
+function drawBall(bx,by,br){
+  ct.save();
+  ct.beginPath();ct.arc(bx,by,br,0,Math.PI*2);
+  ct.fillStyle='#D4FF00';ct.fill();
+  ct.strokeStyle='rgba(0,0,0,0.35)';ct.lineWidth=1;ct.stroke();
+  const holes=[[0,-0.55],[0.48,-0.28],[0.48,0.28],[0,0.55],[-0.48,0.28],[-0.48,-0.28],[0,0]];
+  ct.fillStyle='rgba(0,0,0,0.5)';
+  for(const[hx,hy] of holes){ct.beginPath();ct.arc(bx+hx*br,by+hy*br,br*0.22,0,Math.PI*2);ct.fill();}
+  ct.restore();
+}
+
+draw();updateUI();
+</script>
+</body>
+</html>
