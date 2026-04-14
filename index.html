@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Pickleball × Love x Taiwan</title>
+<title>Pickleball × Love x Taiwan </title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html{height:100%}
@@ -218,11 +218,15 @@ function addLog(who,reason){
 }
 
 function awardPt(winner,reason){
+  // winner = 得分方（對手失誤）
+  // 規則：只有發球方可得分；非發球方得分 → 換發球，不加分
   if(winner===serving){
     if(winner==='player')pScore++;else aiScore++;
     addLog(winner,reason);
   }else{
-    serving=winner;addLog(winner,'換發球 — '+reason);
+    // 非發球方贏這球 → 換發球，不得分
+    serving=winner;
+    addLog(winner,'換發球 — '+reason);
   }
   updateUI();
   if(pScore>=WIN_PTS&&pScore-aiScore>=2){
@@ -377,8 +381,15 @@ function update(){
 }
 
 function checkNet(d){
-  if(ball.vy>0&&ball.lastHit==='player'&&ball.y+ball.r>=d.netY&&ball.y-ball.r<d.netY+6)awardPt('ai','打到網');
-  if(ball.vy<0&&ball.lastHit==='ai'&&ball.y-ball.r<=d.netY&&ball.y+ball.r>d.netY-6)awardPt('player','打到網');
+  // 球打到網 → 打球方失誤，對方得分（若對方是發球方才得分，否則換發球）
+  if(ball.vy>0&&ball.lastHit==='player'
+     &&ball.y+ball.r>=d.netY&&ball.y-ball.r<d.netY+6){
+    awardPt('ai','你打到網');
+  }
+  if(ball.vy<0&&ball.lastHit==='ai'
+     &&ball.y-ball.r<=d.netY&&ball.y+ball.r>d.netY-6){
+    awardPt('player','AI打到網');
+  }
 }
 function checkHit(d,paddle,isPlayer){
   if(ball.hitCooldown>0)return;
@@ -402,20 +413,17 @@ function checkHit(d,paddle,isPlayer){
   ball.hitCooldown=6;
 }
 function checkFloor(d){
+  // 球碰到你方底線 → AI得分（你沒接到）
   if(ball.vy>0&&ball.y+ball.r>=d.h-d.my){
-    ball.y=d.h-d.my-ball.r;const rb=Math.abs(ball.vy)*0.5;
-    if(rb<1.8){awardPt('ai','落地失分');return;}
-    ball.vy=-rb;ball.vx*=0.85;
-    if(ball.lastHit==='ai'){ball.dbBounced++;if(ball.dbBounced>=2)ball.dbDone=true;}
+    awardPt('ai','落地底線失分');return;
   }
+  // 球碰到AI方底線 → 你得分（AI沒接到）
   if(ball.vy<0&&ball.y-ball.r<=d.my){
-    ball.y=d.my+ball.r;const rb=Math.abs(ball.vy)*0.5;
-    if(rb<1.8){awardPt('player','落地失分');return;}
-    ball.vy=rb;ball.vx*=0.85;
-    if(ball.lastHit==='player'){ball.dbBounced++;if(ball.dbBounced>=2)ball.dbDone=true;}
+    awardPt('player','AI底線失分');return;
   }
-  if(ball.y-ball.r>H()+30){awardPt('ai','出界');return;}
-  if(ball.y+ball.r<-30){awardPt('player','出界');return;}
+  // 球飛出畫面外（保險）
+  if(ball.y-ball.r>H()+40){awardPt('ai','出界');return;}
+  if(ball.y+ball.r<-40){awardPt('player','AI出界');return;}
 }
 function movePlayer(d,spd){
   const hw=player.w/2;
