@@ -170,8 +170,8 @@ function initGame(){
   logEntries=[];renderLog();
   winActive=false;
   serving=Math.random()<0.5?'player':'ai';
-  player={x:d.mx+d.cw/2,y:d.kitPTop,w:PW(),h:PH(),minY:d.kitPTop,maxY:d.h-d.my-PH()};
-  ai={x:d.mx+d.cw/2,y:d.kitAiBot-PH(),w:PW(),h:PH(),minY:d.my,maxY:d.kitAiBot-PH()};
+  player={x:d.mx+d.cw/2,y:d.netY+d.kitH-PH(),w:PW(),h:PH(),minY:d.netY+d.kitH-PH(),maxY:d.h-d.my-PH()};
+  ai={x:d.mx+d.cw/2,y:d.netY-d.kitH,w:PW(),h:PH(),minY:d.my,maxY:d.netY-d.kitH};
   particles=[];resetBall();state='serve';updateUI();
 }
 
@@ -328,7 +328,7 @@ function update(){
   const aiHw=ai.w/2;
   const aiTgtX=ball.x+(Math.random()-0.5)*W()*cfg.aiErr;
   ai.x+=(Math.max(d.mx+aiHw,Math.min(d.mx+d.cw-aiHw,aiTgtX))-ai.x)*cfg.aiSpd*1.5;
-  const aiTgtY=ball.vy<0?ball.y-ai.h*2:d.kitAiBot-ai.h;
+  const aiTgtY=ball.vy<0?ball.y-ai.h*2:d.netY-d.kitH;
   ai.y+=(Math.max(ai.minY,Math.min(ai.maxY,aiTgtY))-ai.y)*cfg.aiSpd;
   ball.vx*=(1-cfg.drag);ball.vy*=(1-cfg.drag);
   ball.trail=ball.trail||[];ball.trail.push({x:ball.x,y:ball.y});if(ball.trail.length>8)ball.trail.shift();
@@ -415,7 +415,7 @@ function draw(){
   ct.lineWidth=1.5;ct.strokeStyle='rgba(200,200,200,0.4)';
   for(let i=0;i<=18;i++){const nx=d.mx+d.cw*i/18;ct.beginPath();ct.moveTo(nx,d.netY-7);ct.lineTo(nx,d.netY+7);ct.stroke();}
   ct.restore();
-  const kfs=Math.max(12,Math.round(d.kitH*0.4));
+  const kfs=Math.max(16,Math.round(d.kitH*0.72));
   ct.font=`bold ${kfs}px sans-serif`;ct.textAlign='center';ct.textBaseline='middle';ct.fillStyle='rgba(255,255,255,0.95)';
   ct.save();ct.translate(d.mx+d.cw/2,d.netY-d.kitH/2);ct.rotate(Math.PI);ct.fillText('Kitchen',0,0);ct.restore();
   ct.fillText('Kitchen',d.mx+d.cw/2,d.netY+d.kitH/2);
