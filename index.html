@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Pickleball × SUPACAZ</title>
+<title>Pickleball × Love x Taiwan</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html{height:100%}
@@ -503,7 +503,7 @@ function drawWinScreen(d){
   // Inner fill
   ct.fillStyle='#0d0d1a';ct.fillRect(bx+pxS*2,by+pxS*2,bw-pxS*4,bh-pxS*4);
 
-  // SUPACAZ 8-bit logo
+  // LOVE PICKLEBALL 8-bit logo
   const lw=bw*0.78,lh=lw*0.22;
   const lx=cx-lw/2,ly=by+pxS*3+bh*0.06;
   draw8BitLogoBar(lx,ly,lw,lh,t,borderCols);
@@ -569,14 +569,13 @@ function draw8BitLogoBar(lx,ly,lw,lh,t,cols){
   // Pixel border
   ct.strokeStyle='rgba(255,220,50,0.9)';ct.lineWidth=ps;
   ct.strokeRect(lx+ps/2,ly+ps/2,lw-ps,lh-ps);
-  // SUPACAZ 8-bit text
-  const fs=Math.round(lh*0.6);
+  // LOVE PICKLEBALL 8-bit text
+  const fs=Math.round(lh*0.42);
   ct.font=`900 ${fs}px 'Courier New',monospace`;
   ct.textAlign='center';ct.textBaseline='middle';
-  ct.fillStyle='rgba(0,0,0,0.7)';ct.fillText('SUPACAZ',lx+lw/2+2,ly+lh/2+2);
+  ct.fillStyle='rgba(0,0,0,0.7)';ct.fillText('LOVE PICKLEBALL',lx+lw/2+2,ly+lh/2+2);
   const flashT=cols[Math.floor(t*0.5)%cols.length];
-  // Shimmer: every 3rd char flashes
-  ct.fillStyle='#fff';ct.fillText('SUPACAZ',lx+lw/2,ly+lh/2);
+  ct.fillStyle='#fff';ct.fillText('LOVE PICKLEBALL',lx+lw/2,ly+lh/2);
   // Blinking cursor pixel
   if(Math.floor(t/8)%2===0){
     ct.fillStyle=flashT;ct.fillRect(lx+lw-fs*0.5,ly+lh/2-fs*0.35,fs*0.25,fs*0.6);
