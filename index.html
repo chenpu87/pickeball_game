@@ -459,8 +459,8 @@ function movePlayer(d,spd){
   const hw=player.w/2;
   if((keys['ArrowLeft']||keys['KeyA'])&&player.x-hw>d.mx)player.x-=spd;
   if((keys['ArrowRight']||keys['KeyD'])&&player.x+hw<d.mx+d.cw)player.x+=spd;
-  if((keys['ArrowUp']||keys['KeyW'])&&player.y>player.minY){player.y-=spd*0.75;if(player.y<player.minY)player.y=player.minY;}
-  if((keys['ArrowDown']||keys['KeyS'])&&player.y+player.h<player.maxY){player.y+=spd*0.75;if(player.y+player.h>player.maxY)player.y=player.maxY-player.h;}
+  if((keys['ArrowUp']||keys['KeyW'])&&player.y>player.minY){player.y-=spd*1.6;if(player.y<player.minY)player.y=player.minY;}
+  if((keys['ArrowDown']||keys['KeyS'])&&player.y+player.h<player.maxY){player.y+=spd*1.6;if(player.y+player.h>player.maxY)player.y=player.maxY-player.h;}
   // Mouse: follow X axis only
   if(mousePos.x){const tx=Math.max(d.mx+hw,Math.min(d.mx+d.cw-hw,mousePos.x));player.x+=(tx-player.x)*0.22;}
 }
