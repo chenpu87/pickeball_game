@@ -5,6 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Pickleball × Love x Taiwan </title>
 <link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Pacifico&display=swap" rel="stylesheet">
+
+<!-- Google Analytics 4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-HQEYGR9X8F"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-HQEYGR9X8F');
+  
+  // 遊戲事件追蹤函數
+  function trackGameEvent(eventName, eventParams) {
+    if (typeof gtag === 'function') {
+      gtag('event', eventName, eventParams);
+    }
+  }
+</script>
+<!-- End Google Analytics 4 -->
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html{height:100%}
@@ -298,6 +315,10 @@ function addLog(who,reason){
 }
 
 function awardPt(winner,reason){
+  // === Google Analytics: 追蹤得分 ===
+  if(typeof trackGameEvent==='function'){
+    trackGameEvent('point_scored',{winner:winner,reason:reason,rally_number:rallyNum+1});
+  }
   // winner = 得分方（對手失誤）
   // 規則：只有發球方可得分；非發球方得分 → 換發球，不加分
   if(winner===serving){
@@ -310,12 +331,20 @@ function awardPt(winner,reason){
   }
   updateUI();
   if(pScore>=WIN_PTS&&pScore-aiScore>=2){
+    // === Google Analytics: 追蹤局數結束 ===
+    if(typeof trackGameEvent==='function'){
+      trackGameEvent('set_end',{winner:'player',set_number:setNum,player_score:pScore,ai_score:aiScore});
+    }
     pSets++;pScore=0;aiScore=0;setNum++;
     if(pSets>=WIN_SETS){triggerWin('player');return;}
     setMsg(t('set-win-you'));state='between';updateUI();
     setTimeout(()=>{resetBall();state='serve';updateUI();},1600);return;
   }
   if(aiScore>=WIN_PTS&&aiScore-pScore>=2){
+    // === Google Analytics: 追蹤局數結束 ===
+    if(typeof trackGameEvent==='function'){
+      trackGameEvent('set_end',{winner:'ai',set_number:setNum,player_score:pScore,ai_score:aiScore});
+    }
     aiSets++;pScore=0;aiScore=0;setNum++;
     if(aiSets>=WIN_SETS){triggerWin('ai');return;}
     setMsg(t('set-win-ai'));state='between';updateUI();
@@ -326,6 +355,10 @@ function awardPt(winner,reason){
 }
 
 function triggerWin(who){
+  // === Google Analytics: 追蹤遊戲結束 ===
+  if(typeof trackGameEvent==='function'){
+    trackGameEvent('game_end',{winner:who,player_sets:pSets+(who==='player'?1:0),ai_sets:aiSets+(who==='ai'?1:0),difficulty:document.getElementById('diffsel').value});
+  }
   winWho=who;winActive=true;winAnim=0;state='gameover';
   spawnConfetti(100);
   if(who==='player')setMsg(t('win-you'));else setMsg(t('win-ai'));
@@ -422,7 +455,13 @@ function spawnSmashFlash(x,y){
 }
 
 document.getElementById('btnstart').addEventListener('click',startGame);
-function startGame(){if(animId)cancelAnimationFrame(animId);running=true;initGame();loop();}
+function startGame(){
+  // === Google Analytics: 追蹤遊戲開始 ===
+  if(typeof trackGameEvent==='function'){
+    trackGameEvent('game_start',{difficulty:document.getElementById('diffsel').value,language:lang});
+  }
+  if(animId)cancelAnimationFrame(animId);running=true;initGame();loop();
+}
 function loop(){if(!running)return;update();draw();animId=requestAnimationFrame(loop);}
 
 function update(){
@@ -758,6 +797,10 @@ function applyLang(){
 document.getElementById('btnlang').addEventListener('click',()=>{
   lang=lang==='zh'?'en':'zh';
   applyLang();
+  // === Google Analytics: 追蹤語言切換 ===
+  if(typeof trackGameEvent==='function'){
+    trackGameEvent('language_change',{new_language:lang});
+  }
 });
 
 // Patch dynamic strings to use i18n
